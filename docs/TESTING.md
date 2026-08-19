@@ -1,7 +1,7 @@
 # Testing
 
 ```
-217 tests   ·   45 Cucumber scenarios (174 steps)   ·   172 unit tests   ·   ~85% line coverage
+234 tests   ·   48 Cucumber scenarios (192 steps)   ·   186 unit tests   ·   88% line coverage
 ```
 
 ## Running them
@@ -119,20 +119,32 @@ direction: a step with no matching definition fails the build rather than being 
 
 ## The coverage gate
 
-JaCoCo enforces 80% line coverage at `verify`; the actual figure is around 85%. `com.cookmgmt.ui.**`
-and `SampleData` are excluded — the interfaces are exercised by hand, and unit-testing JavaFX
-controllers would add machinery without adding confidence. Everything they call *is* covered.
+JaCoCo enforces 80% line coverage at `verify`; the actual figure is 88%. `com.cookmgmt.ui.**` and
+`SampleData` are excluded — the interfaces are exercised by hand, and unit-testing JavaFX
+controllers would add machinery without adding confidence. Everything they call *is* covered, and
+[docs/SCREENSHOTS.md](SCREENSHOTS.md) is the record of the manual pass.
+
+The `report` and `check` executions share those exclusions, so the figure in
+`target/site/jacoco/index.html` is the same one quoted here. They used to differ: only the gate
+excluded the UI, so the published report read 34% while the build passed at 88%, and every coverage
+claim in these documents looked false to anyone who opened the report.
 
 | Package | Line coverage |
 |---|---|
 | `support` | 100% |
 | `domain.exception` | 94% |
-| `domain` | 92% |
 | `inventory` | 92% |
-| `service` | 90% |
+| `service` | 91% |
+| `domain` | 91% |
 | `repository` | 90% |
 | `domain.rule` | 87% |
 | `domain.policy` | 86% |
+| `app` | 67% |
+| `notify` | 63% |
+
+The last two are the wiring rather than the rules: `AppContext` is a composition root whose
+remaining uncovered lines are constructor plumbing, and `ConsoleNotifier` writes to `System.out`, so
+the tests use `InMemoryNotifier` instead and assert on what it recorded.
 
 ## TDD workflow used here
 
