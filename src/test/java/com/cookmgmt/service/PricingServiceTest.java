@@ -5,12 +5,14 @@ import com.cookmgmt.domain.Invoice;
 import com.cookmgmt.domain.Meal;
 import com.cookmgmt.domain.Money;
 import com.cookmgmt.domain.Order;
+import com.cookmgmt.domain.Statement;
 import com.cookmgmt.inventory.InMemoryInventory;
 import com.cookmgmt.inventory.MutableInventory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -120,6 +122,131 @@ class PricingServiceTest {
         assertTrue(rendered.contains("Invoice #1"), rendered);
         assertTrue(rendered.contains("Tofu Bowl"), rendered);
         assertTrue(rendered.contains("$6.00"), rendered);
+    }
+
+    // ------------------------------------------------------------- statements
+
+    /** Builds an order with a distinct number so statement entries can be told apart. */
+    private Order numberedOrder(int number, Meal meal) {
+        return new Order(number, new Customer("Layla", "layla@example.com"), meal);
+    }
+
+    private Order completedOrder(int number, Meal meal) {
+        Order order = numberedOrder(number, meal);
+        order.markInProgress();
+        order.complete(pricing.quote(order));
+        return order;
+    }
+
+    @Test
+    @DisplayName("a statement totals only the orders that were actually served")
+    void statementTotalsCompletedOrdersOnly() {
+        Meal bowl = Meal.of("Tofu Bowl", Map.of("tofu", 1, "rice", 2), 15);   // 6.00
+        Meal burger = Meal.of("Beef Burger", Map.of("beef", 1), 20);          // 6.00
+
+        Statement statement = pricing.statementFor("Layla", List.of(
+                completedOrder(1, bowl),
+                completedOrder(2, burger)));
+
+        assertEquals(Money.of("12.00"), statement.total());
+        assertEquals(2, statement.billedCount());
+        assertEquals(0, statement.excludedCount());
+    }
+
+    @Test
+    @DisplayName("a cancelled order is excluded from the total and reported as excluded")
+    void statementExcludesCancelledOrders() {
+        /*
+         * This is the defect the statement exists to prevent. The GUI used to invoice whatever row
+         * was selected, and invoiceFor falls back to a live quote when an order has no frozen
+         * price - so a cancelled order rendered a complete, entirely fictional bill.
+         */
+        Meal bowl = Meal.of("Tofu Bowl", Map.of("tofu", 1, "rice", 2), 15);
+
+        Order cancelled = numberedOrder(2, bowl);
+        cancelled.cancel();
+
+        Statement statement = pricing.statementFor("Layla", List.of(
+                completedOrder(1, bowl),
+                cancelled));
+
+        assertEquals(Money.of("6.00"), statement.total(), "the cancelled order must not be charged");
+        assertEquals(1, statement.billedCount());
+        assertEquals(1, statement.excludedCount());
+        assertTrue(statement.billed().stream().noneMatch(entry -> entry.orderNumber() == 2));
+        assertTrue(statement.unbilled().stream().noneMatch(entry -> entry.orderNumber() == 2));
+    }
+
+    @Test
+    @DisplayName("a rejected order is excluded too")
+    void statementExcludesRejectedOrders() {
+        Meal burger = Meal.of("Beef Burger", Map.of("beef", 1), 20);
+
+        Order rejected = numberedOrder(1, burger);
+        rejected.applySubstitutions(Map.of("beef", "tofu"));
+        rejected.rejectSubstitutions();
+
+        Statement statement = pricing.statementFor("Layla", List.of(rejected));
+
+        assertEquals(Money.ZERO, statement.total());
+        assertEquals(1, statement.excludedCount());
+        assertTrue(statement.isEmpty());
+    }
+
+    @Test
+    @DisplayName("an order still in the kitchen is listed unbilled and does not affect the total")
+    void statementListsActiveOrdersSeparately() {
+        Meal bowl = Meal.of("Tofu Bowl", Map.of("tofu", 1, "rice", 2), 15);
+
+        Statement statement = pricing.statementFor("Layla", List.of(
+                completedOrder(1, bowl),
+                numberedOrder(2, bowl)));           // still PENDING
+
+        assertEquals(Money.of("6.00"), statement.total(),
+                "an order that has not been served yet is not billed");
+        assertEquals(1, statement.billedCount());
+        assertEquals(1, statement.unbilled().size());
+        assertEquals(2, statement.unbilled().get(0).orderNumber());
+        assertEquals(Money.of("6.00"), statement.unbilled().get(0).amount(),
+                "but it is still quoted, so the customer knows what is coming");
+    }
+
+    @Test
+    @DisplayName("a statement uses the frozen price, not a repriced one")
+    void statementUsesFrozenPrices() {
+        Meal bowl = Meal.of("Tofu Bowl", Map.of("tofu", 1, "rice", 2), 15);
+        Order served = completedOrder(1, bowl);
+
+        inventory.reprice("tofu", Money.of("99.00"));
+
+        assertEquals(Money.of("6.00"), pricing.statementFor("Layla", List.of(served)).total());
+    }
+
+    @Test
+    @DisplayName("a customer with no orders gets a zero statement rather than an error")
+    void statementForNoOrdersIsZero() {
+        Statement statement = pricing.statementFor("Layla", List.of());
+
+        assertEquals(Money.ZERO, statement.total());
+        assertEquals(0, statement.billedCount());
+        assertTrue(statement.isEmpty());
+        assertTrue(statement.format().contains("No completed orders yet"));
+    }
+
+    @Test
+    @DisplayName("the rendered statement names the customer and the grand total")
+    void renderedStatementCarriesTheDetails() {
+        Meal bowl = Meal.of("Tofu Bowl", Map.of("tofu", 1, "rice", 2), 15);
+        Order cancelled = numberedOrder(2, bowl);
+        cancelled.cancel();
+
+        String rendered = pricing.statementFor("Layla", List.of(completedOrder(1, bowl), cancelled))
+                .format();
+
+        assertTrue(rendered.contains("Layla"), rendered);
+        assertTrue(rendered.contains("Tofu Bowl"), rendered);
+        assertTrue(rendered.contains("$6.00"), rendered);
+        assertTrue(rendered.contains("1 cancelled or rejected order excluded"), rendered);
     }
 
     @Test

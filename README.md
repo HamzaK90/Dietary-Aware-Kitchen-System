@@ -30,7 +30,7 @@ Java 17+  ·  Maven (wrapper included)  ·  JUnit 5  ·  Cucumber 7  ·  JavaFX 
 You do not need Maven installed — the wrapper fetches it.
 
 ```bash
-./mvnw clean verify        # compile, run all 215 tests, produce the coverage report
+./mvnw clean verify        # compile, run all 234 tests, produce the coverage report
 ./mvnw javafx:run          # launch the JavaFX desktop interface
 ./mvnw exec:java           # launch the console interface
 ```
@@ -51,6 +51,11 @@ Both interfaces start with sample data loaded. Useful logins:
 panel explains that beef and cheese are not vegan, proposes replacements that are actually in stock
 and actually vegan, and the order then goes to a chef for approval.
 
+**Then try this:** select that order in *My orders* and press **Cancel order**. Without touching a
+refresh button anywhere, the Chef tab drops it from the queue, the Admin orders table greys it out
+and strikes it through, and the Admin inventory table shows its ingredients back in stock — the
+three tabs are kept in step by [`ViewRefresher`](src/main/java/com/cookmgmt/ui/fx/ViewRefresher.java).
+
 ---
 
 ## What it does
@@ -65,7 +70,14 @@ and actually vegan, and the order then goes to a chef for approval.
   returns them; low stock raises a notification.
 - **Kitchen workflow** — orders are assigned to chefs by a swappable policy, reviewed when they
   carry substitutions, cooked, and completed through an enforced state machine.
-- **Billing** — itemised invoices in `BigDecimal`, with the total frozen at completion.
+- **Cancellation** — a customer can withdraw an order at any point up to the moment a chef starts
+  cooking it, and its ingredients go straight back into stock. Once cooking has begun the action is
+  refused: those ingredients have been used, and returning them would invent food that no longer
+  exists. Both interfaces read the permitted window from the same state machine, so neither can
+  offer an action the domain would reject.
+- **Billing** — itemised invoices in `BigDecimal`, with the total frozen at completion, plus a
+  per-customer statement. Only completed orders are billed; cancelled and rejected ones are reported
+  as excluded rather than silently dropped.
 
 ---
 

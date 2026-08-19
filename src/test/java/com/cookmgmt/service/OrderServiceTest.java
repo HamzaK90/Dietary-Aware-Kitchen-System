@@ -9,6 +9,7 @@ import com.cookmgmt.domain.Money;
 import com.cookmgmt.domain.Order;
 import com.cookmgmt.domain.OrderStatus;
 import com.cookmgmt.domain.exception.InsufficientStockException;
+import com.cookmgmt.domain.exception.OrderStateException;
 import com.cookmgmt.notify.InMemoryNotifier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -251,6 +252,118 @@ class OrderServiceTest {
 
             assertEquals(OrderStatus.CANCELLED, order.getStatus());
             assertEquals(tofuBefore, app.inventory().stockOf("tofu"));
+        }
+
+        @Test
+        @DisplayName("an order awaiting chef approval can still be cancelled")
+        void cancelsWhileAwaitingApproval() {
+            Meal burger = app.catalogService().addMeal("Beef Burger", Map.of("beef", 1), 20);
+            int beefBefore = app.inventory().stockOf("beef");
+            int tofuBefore = app.inventory().stockOf("tofu");
+
+            Order order = app.orderService().place(layla, burger, Map.of("beef", "tofu"));
+            assertEquals(OrderStatus.NEEDS_APPROVAL, order.getStatus());
+
+            app.orderService().cancel(order);
+
+            assertEquals(OrderStatus.CANCELLED, order.getStatus());
+            // The substitute is what was reserved, so the substitute is what comes back.
+            assertEquals(tofuBefore, app.inventory().stockOf("tofu"));
+            assertEquals(beefBefore, app.inventory().stockOf("beef"));
+        }
+
+        @Test
+        @DisplayName("an approved order can still be cancelled")
+        void cancelsAfterApproval() {
+            Meal burger = app.catalogService().addMeal("Beef Burger", Map.of("beef", 1), 20);
+            int tofuBefore = app.inventory().stockOf("tofu");
+
+            Order order = app.orderService().place(layla, burger, Map.of("beef", "tofu"));
+            app.kitchenService().approve(order);
+
+            app.orderService().cancel(order);
+
+            assertEquals(OrderStatus.CANCELLED, order.getStatus());
+            assertEquals(tofuBefore, app.inventory().stockOf("tofu"));
+        }
+
+        @Test
+        @DisplayName("an order already being cooked cannot be cancelled, and its stock stays consumed")
+        void refusesOnceCookingHasStarted() {
+            /*
+             * The stock release is what makes this a correctness question rather than a matter of
+             * taste. Ingredients already in the pan have been used; returning them would invent
+             * food that no longer exists and inflate inventory a little more with every late
+             * cancellation. The refusal must therefore leave stock exactly as it was.
+             */
+            Order order = app.orderService().place(layla, tofuBowl);
+            app.kitchenService().startCooking(order);
+
+            int tofuDuring = app.inventory().stockOf("tofu");
+            int riceDuring = app.inventory().stockOf("rice");
+
+            assertThrows(OrderStateException.class, () -> app.orderService().cancel(order));
+
+            assertEquals(OrderStatus.IN_PROGRESS, order.getStatus());
+            assertEquals(tofuDuring, app.inventory().stockOf("tofu"));
+            assertEquals(riceDuring, app.inventory().stockOf("rice"));
+        }
+
+        @Test
+        @DisplayName("a served order cannot be cancelled")
+        void refusesOnceServed() {
+            Order order = app.orderService().place(layla, tofuBowl);
+            app.kitchenService().complete(order);
+
+            int tofuAfter = app.inventory().stockOf("tofu");
+
+            assertThrows(OrderStateException.class, () -> app.orderService().cancel(order));
+
+            assertEquals(OrderStatus.COMPLETED, order.getStatus());
+            assertEquals(tofuAfter, app.inventory().stockOf("tofu"));
+        }
+
+        @Test
+        @DisplayName("cancelling twice is refused and does not return the ingredients again")
+        void refusesDoubleCancellation() {
+            // Without the state machine guarding this, a second cancel would release the recipe a
+            // second time and quietly create stock out of nothing.
+            Order order = app.orderService().place(layla, tofuBowl);
+            app.orderService().cancel(order);
+
+            int tofuAfterFirst = app.inventory().stockOf("tofu");
+
+            assertThrows(OrderStateException.class, () -> app.orderService().cancel(order));
+
+            assertEquals(tofuAfterFirst, app.inventory().stockOf("tofu"));
+        }
+
+        @Test
+        @DisplayName("a cancelled order leaves the chef's queue and the customer's active list")
+        void disappearsFromQueueAndActiveOrders() {
+            Order order = app.orderService().place(layla, tofuBowl);
+            assertTrue(app.kitchenService().queueFor(nora).contains(order),
+                    "the order should start out in the chef's queue");
+
+            app.orderService().cancel(order);
+
+            assertFalse(app.kitchenService().queueFor(nora).contains(order),
+                    "a cancelled order must not stay in the kitchen queue");
+            assertFalse(app.orderService().activeFor(layla).contains(order));
+            assertTrue(app.orderRepository().findByCustomer(layla).contains(order),
+                    "it is still on record, just no longer active");
+        }
+
+        @Test
+        @DisplayName("the customer is told the order was cancelled")
+        void notifiesTheCustomer() {
+            Order order = app.orderService().place(layla, tofuBowl);
+
+            app.orderService().cancel(order);
+
+            assertTrue(notifier.forRecipient(layla.getEmail()).stream()
+                            .anyMatch(note -> note.message().contains("cancelled")),
+                    () -> "no cancellation notice in " + notifier.forRecipient(layla.getEmail()));
         }
     }
 

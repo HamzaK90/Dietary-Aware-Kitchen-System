@@ -4,6 +4,8 @@ import com.cookmgmt.domain.Invoice;
 import com.cookmgmt.domain.Meal;
 import com.cookmgmt.domain.Money;
 import com.cookmgmt.domain.Order;
+import com.cookmgmt.domain.OrderStatus;
+import com.cookmgmt.domain.Statement;
 import com.cookmgmt.inventory.ReadableInventory;
 
 import java.util.ArrayList;
@@ -89,5 +91,56 @@ public class PricingService {
                 order.getMeal().getName(),
                 lines,
                 total);
+    }
+
+    /**
+     * Sums a customer's orders into a single account {@link Statement}.
+     *
+     * <p>Only {@link OrderStatus#COMPLETED} orders reach the total, and they contribute the price
+     * frozen when they were served rather than a fresh calculation - so restocking an ingredient at
+     * a new price cannot retroactively change what a customer already paid. Orders still in the
+     * kitchen are listed separately at their current estimate, and cancelled or rejected orders are
+     * counted but never priced: nothing was cooked, so there is nothing to charge for.
+     *
+     * <p>Takes the orders as an argument rather than reaching for a repository, which keeps pricing
+     * a pure calculation over data it is handed and lets a test pin down every case without
+     * building a repository first.
+     *
+     * @param customerName who the statement is addressed to
+     * @param orders       every order belonging to that customer, in any state
+     */
+    public Statement statementFor(String customerName, List<Order> orders) {
+        Objects.requireNonNull(customerName, "customerName");
+        Objects.requireNonNull(orders, "orders");
+
+        List<Statement.Entry> billed = new ArrayList<>();
+        List<Statement.Entry> unbilled = new ArrayList<>();
+        Money total = Money.ZERO;
+        int excluded = 0;
+
+        for (Order order : orders) {
+            if (order.isCompleted()) {
+                // orElseGet rather than orElseThrow: a completed order always has a frozen price,
+                // but falling back to a quote is harmless and avoids an exception in the UI if that
+                // invariant ever breaks.
+                Money amount = order.getFinalPrice().orElseGet(() -> quote(order));
+                billed.add(entryFor(order, amount));
+                total = total.plus(amount);
+            } else if (order.getStatus().isActive()) {
+                unbilled.add(entryFor(order, quote(order)));
+            } else {
+                excluded++;
+            }
+        }
+
+        return new Statement(customerName, billed, unbilled, total, excluded);
+    }
+
+    private static Statement.Entry entryFor(Order order, Money amount) {
+        return new Statement.Entry(
+                order.getOrderNumber(),
+                order.getMeal().getName(),
+                order.getStatus().displayName(),
+                amount);
     }
 }

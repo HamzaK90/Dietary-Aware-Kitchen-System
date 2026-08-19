@@ -2,6 +2,9 @@ package com.cookmgmt.bdd;
 
 import com.cookmgmt.domain.Invoice;
 import com.cookmgmt.domain.Money;
+import com.cookmgmt.domain.Order;
+import com.cookmgmt.domain.OrderStatus;
+import com.cookmgmt.domain.Statement;
 import io.cucumber.java.en.Given;
 import io.cucumber.java.en.Then;
 import io.cucumber.java.en.When;
@@ -20,6 +23,8 @@ public class BillingSteps {
 
     private final TestContext context;
     private Money totalAtCompletion;
+    private Map<String, Integer> stockBeforeCancelling = new LinkedHashMap<>();
+    private Order secondOrder;
 
     public BillingSteps(TestContext context) {
         this.context = context;
@@ -89,5 +94,108 @@ public class BillingSteps {
         // cannot rewrite an invoice that has already been issued.
         Invoice reissued = context.app().pricingService().invoiceFor(context.order());
         assertEquals(totalAtCompletion, reissued.total());
+    }
+
+    // --------------------------------------------------------- cancellation
+
+    @When("the customer cancels the order")
+    public void theCustomerCancelsTheOrder() {
+        stockBeforeCancelling = snapshotOf(context.order());
+        context.app().orderService().cancel(context.order());
+    }
+
+    @Given("a chef has started cooking the order")
+    public void aChefHasStartedCookingTheOrder() {
+        context.app().kitchenService().startCooking(context.order());
+    }
+
+    @When("the customer tries to cancel the order")
+    public void theCustomerTriesToCancelTheOrder() {
+        stockBeforeCancelling = snapshotOf(context.order());
+        context.attempt(() -> context.app().orderService().cancel(context.order()));
+    }
+
+    @Then("the cancellation should be refused")
+    public void theCancellationShouldBeRefused() {
+        assertNotNull(context.thrownException(),
+                "Cancelling an order that is already being cooked should have been refused");
+        assertEquals(OrderStatus.IN_PROGRESS, context.order().getStatus());
+    }
+
+    @Then("the ingredients should be back in stock")
+    public void theIngredientsShouldBeBackInStock() {
+        stockBeforeCancelling.forEach((ingredient, before) ->
+                assertEquals(before + context.order().effectiveRecipe().get(ingredient),
+                        context.app().inventory().stockOf(ingredient),
+                        "\"" + ingredient + "\" was not returned to stock"));
+    }
+
+    @Then("the ingredients should stay out of stock")
+    public void theIngredientsShouldStayOutOfStock() {
+        // Returning ingredients that are already in the pan would invent food that no longer
+        // exists, so a refused cancellation must leave stock exactly as it was.
+        stockBeforeCancelling.forEach((ingredient, before) ->
+                assertEquals(before, context.app().inventory().stockOf(ingredient),
+                        "\"" + ingredient + "\" should not have been returned"));
+    }
+
+    @Then("the order should no longer appear in the chef's queue")
+    public void theOrderShouldNoLongerAppearInTheQueue() {
+        assertFalse(context.app().kitchenService().queueFor(context.chef()).contains(context.order()),
+                "A cancelled order must leave the kitchen queue");
+    }
+
+    @Given("the customer places a second order for {string}")
+    public void theCustomerPlacesASecondOrderFor(String mealName) {
+        secondOrder = context.app().orderService().place(context.customer(), context.meal());
+        assertEquals(mealName, secondOrder.getMeal().getName());
+    }
+
+    @Given("the customer cancels the second order")
+    public void theCustomerCancelsTheSecondOrder() {
+        context.app().orderService().cancel(secondOrder);
+    }
+
+    @Then("the order should not appear on the customer's statement")
+    public void theOrderShouldNotAppearOnTheStatement() {
+        Statement statement = statement();
+        assertTrue(statement.billed().stream()
+                        .noneMatch(entry -> entry.orderNumber() == context.order().getOrderNumber()),
+                "A cancelled order must never be billed");
+        assertEquals(1, statement.excludedCount());
+    }
+
+    @Then("the statement total should be {string}")
+    public void theStatementTotalShouldBe(String expected) {
+        assertEquals(expected, statement().total().toString());
+    }
+
+    @Then("the statement should bill {int} order")
+    public void theStatementShouldBillOrders(int expected) {
+        assertEquals(expected, statement().billedCount());
+    }
+
+    @Then("the statement should report {int} excluded order")
+    public void theStatementShouldReportExcluded(int expected) {
+        assertEquals(expected, statement().excludedCount());
+    }
+
+    @Then("the statement total should equal the completed order's invoice")
+    public void theStatementTotalShouldEqualTheInvoice() {
+        assertEquals(context.invoice().total(), statement().total());
+    }
+
+    private Statement statement() {
+        return context.app().pricingService().statementFor(
+                context.customer().getName(),
+                context.app().orderRepository().findByCustomer(context.customer()));
+    }
+
+    /** Stock levels for every ingredient an order holds, taken before the cancellation is tried. */
+    private Map<String, Integer> snapshotOf(Order order) {
+        Map<String, Integer> snapshot = new LinkedHashMap<>();
+        order.effectiveRecipe().keySet().forEach(ingredient ->
+                snapshot.put(ingredient, context.app().inventory().stockOf(ingredient)));
+        return snapshot;
     }
 }

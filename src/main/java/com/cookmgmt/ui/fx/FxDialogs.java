@@ -36,6 +36,7 @@ final class FxDialogs {
         Alert alert = new Alert(Alert.AlertType.CONFIRMATION, message, ButtonType.OK, ButtonType.CANCEL);
         alert.setTitle(title);
         alert.setHeaderText(title);
+        AppIcon.applyTo(alert);
         Optional<ButtonType> choice = alert.showAndWait();
         return choice.isPresent() && choice.get() == ButtonType.OK;
     }
@@ -52,6 +53,7 @@ final class FxDialogs {
         alert.setHeaderText(title);
         alert.getDialogPane().setContent(area);
         alert.getDialogPane().setPrefWidth(520);
+        AppIcon.applyTo(alert);
         alert.showAndWait();
     }
 
@@ -59,6 +61,7 @@ final class FxDialogs {
         Alert alert = new Alert(type, message == null ? "" : message, ButtonType.OK);
         alert.setTitle(title);
         alert.setHeaderText(title);
+        AppIcon.applyTo(alert);
         alert.showAndWait();
     }
 }

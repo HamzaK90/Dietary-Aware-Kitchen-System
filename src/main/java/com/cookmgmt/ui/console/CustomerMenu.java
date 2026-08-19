@@ -5,11 +5,13 @@ import com.cookmgmt.domain.Conflict;
 import com.cookmgmt.domain.Customer;
 import com.cookmgmt.domain.Meal;
 import com.cookmgmt.domain.Order;
+import com.cookmgmt.domain.OrderStatus;
 import com.cookmgmt.domain.exception.DuplicateEmailException;
 import com.cookmgmt.domain.exception.InsufficientStockException;
 import com.cookmgmt.service.OrderService;
 import com.cookmgmt.support.Text;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -43,15 +45,19 @@ public class CustomerMenu {
             io.print("1. Browse menu and place an order");
             io.print("2. My active orders");
             io.print("3. Order history");
-            io.print("4. Update my profile");
-            io.print("5. Log out");
+            io.print("4. Cancel an order");
+            io.print("5. My statement");
+            io.print("6. Update my profile");
+            io.print("7. Log out");
 
-            switch (io.askInt("Select: ", 1, 5)) {
+            switch (io.askInt("Select: ", 1, 7)) {
                 case 1 -> placeOrder(customer);
                 case 2 -> showActiveOrders(customer);
                 case 3 -> showHistory(customer);
-                case 4 -> updateProfile(customer);
-                case 5 -> {
+                case 4 -> cancelOrder(customer);
+                case 5 -> showStatement(customer);
+                case 6 -> updateProfile(customer);
+                case 7 -> {
                     return;
                 }
                 default -> { }
@@ -199,6 +205,74 @@ public class CustomerMenu {
                     io.blankLine();
                     io.print(app.pricingService().invoiceFor(order).format());
                 });
+    }
+
+    /**
+     * Withdraws an order and returns its ingredients to stock.
+     *
+     * <p>The console had no way to do this at all, even though {@code OrderService.cancel} existed
+     * and the GUI offered the action - so the two interfaces disagreed about what a customer was
+     * allowed to do. It calls exactly the same service method the GUI does; the only thing written
+     * twice is how the question is asked.
+     *
+     * <p>Which orders qualify is asked of {@link com.cookmgmt.domain.OrderStatus#canTransitionTo},
+     * not decided here, so this list can never offer an order the domain would refuse.
+     */
+    private void cancelOrder(Customer customer) {
+        io.heading("Cancel an Order");
+
+        List<Order> cancellable = app.orderService().activeFor(customer).stream()
+                .filter(order -> order.getStatus().canTransitionTo(OrderStatus.CANCELLED))
+                .toList();
+
+        if (cancellable.isEmpty()) {
+            io.print("You have no orders that can still be cancelled.");
+            io.print("An order can no longer be withdrawn once a chef has started cooking it.");
+            return;
+        }
+
+        Optional<Order> selection = io.choose("Orders you can still cancel:", cancellable,
+                order -> String.format("#%d  %-16s %-24s %s",
+                        order.getOrderNumber(),
+                        order.getMeal().getName(),
+                        order.getStatus().displayName(),
+                        app.pricingService().quote(order)));
+        if (selection.isEmpty()) {
+            return;
+        }
+        Order order = selection.get();
+
+        io.print("These ingredients go back into stock:");
+        order.effectiveRecipe().forEach((ingredient, quantity) ->
+                io.print("  - " + quantity + " x " + ingredient));
+
+        if (!io.confirm("Cancel order #" + order.getOrderNumber() + "?")) {
+            io.print("Left as it is.");
+            return;
+        }
+
+        try {
+            app.orderService().cancel(order);
+            io.print("Order #" + order.getOrderNumber()
+                    + " cancelled. Its ingredients are back in stock.");
+        } catch (RuntimeException e) {
+            io.print("Could not cancel the order: " + e.getMessage());
+        }
+    }
+
+    /**
+     * The customer's whole account: what they have been billed, what is still cooking, and how many
+     * orders were withdrawn.
+     *
+     * <p>Only completed orders reach the total - a cancelled order was never cooked, so there is
+     * nothing to charge for.
+     */
+    private void showStatement(Customer customer) {
+        io.heading("My Statement");
+        io.print(app.pricingService()
+                .statementFor(customer.getName(),
+                        app.orderRepository().findByCustomer(customer))
+                .format());
     }
 
     private void updateProfile(Customer customer) {

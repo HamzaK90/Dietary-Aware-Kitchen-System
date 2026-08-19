@@ -83,3 +83,29 @@
 .default-color0.chart-bar {
     -fx-bar-fill: #4a7fb5;
 }
+
+/*
+ * Order status colouring for the admin report.
+ *
+ * A withdrawn order should be recognisable without reading the status column. The classes are
+ * applied by AdminView's row factory; keeping the colours here rather than in setStyle() calls is
+ * what lets the palette change without recompiling a controller.
+ */
+.table-row-cell.order-cancelled .table-cell {
+    -fx-text-fill: #8a94a0;
+    -fx-strikethrough: true;
+}
+
+.table-row-cell.order-rejected .table-cell {
+    -fx-text-fill: #b3261e;
+}
+
+.table-row-cell.order-completed .table-cell {
+    -fx-text-fill: #1e6f45;
+}
+
+/* Selected rows keep the default highlight readable rather than inheriting the status colour. */
+.table-row-cell:selected .table-cell {
+    -fx-text-fill: white;
+    -fx-strikethrough: false;
+}

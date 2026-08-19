@@ -3,6 +3,65 @@
 This repository is the enhanced continuation of an earlier iteration of the same coursework project.
 Version 1.0 below refers to that earlier iteration; version 2.0 is the code in this repository.
 
+## 2.1.0 — Order cancellation, statements, and a GUI that stays in step
+
+Follow-up from testing the 2.0 interface. Every defect below is in the view layer: the services had
+the right data throughout, which is why the existing tests did not catch any of them.
+
+### Fixed
+
+- **Cancelling an order updated only the tab it was done from.** `FxApplication` built the three
+  views inline and discarded the references, so no tab could refresh another even in principle —
+  `CustomerView.refreshAll()` existed, documented as being called by the other tabs, and nothing
+  called it. The chef's queue and the admin report went stale until the user pressed a Refresh
+  button. Views now register with `ViewRefresher`, which fans one notification out to all of them.
+- **A row's status never redrew when only its status changed.** `Entity.equals` compares by UUID, so
+  an approved or rejected order is still `equals` to the object the table cell holds and JavaFX
+  skipped the update as a no-op. Approving an order left the Status column reading "Awaiting chef
+  approval" in both the customer and admin tables. Every refresh now ends with `table.refresh()`.
+- **A cancelled order could be invoiced.** The invoice button billed whatever row was selected, and
+  `PricingService.invoiceFor` falls back to a live quote when an order has no frozen price — so a
+  cancelled order rendered a complete, entirely fictional bill. The console never had this defect,
+  so the two interfaces disagreed.
+- **The orders chart rescaled on every refresh.** A `CategoryAxis` accumulates the categories it has
+  been shown, so each refresh widened the axis with empty slots; and `chart.setAnimated(false)` does
+  not reach the axes, which animated their own re-ranging. Categories are now cleared and restated,
+  both axes are non-animated, and the count axis has an explicit range.
+- **"Start cooking" was offered on orders awaiting approval.** The button was enabled for anything
+  "not terminal", but that transition is illegal and threw. It now asks
+  `OrderStatus.canTransitionTo`, as the cancel button does.
+- **The customer's orders table was empty until the customer was switched.** The picker selects its
+  first entry before its listener is attached, so nothing populated the table at startup.
+
+### Added
+
+- **Cancel from the console.** `OrderService.cancel` existed and the GUI offered it, but
+  `CustomerMenu` had no way to reach it — the two interfaces disagreed about what a customer could
+  do. Both now call the same service method.
+- **Customer statements.** `Statement` and `PricingService.statementFor` total a customer's
+  completed orders, list orders still in the kitchen separately as unbilled, and report cancelled or
+  rejected ones as an excluded count rather than dropping them silently. In the GUI the bill button
+  follows the selection: an order selected shows that order, nothing selected shows the statement,
+  with Escape, ctrl-click and a Clear selection button to deselect.
+- **Cancellation is confirmed before it happens**, listing the ingredients that return to stock, and
+  the button carries a tooltip explaining why it is unavailable when it is.
+- **Status colouring in the admin orders table** — cancelled greyed and struck through, rejected
+  red, completed green. Cancelled and rejected orders are excluded from the orders-per-meal chart,
+  and show `-` rather than an estimate they will never be charged.
+- **An application icon**, applied to the main window and to every dialog; a JavaFX dialog is its
+  own window with its own icon list.
+- 19 tests covering the cancellation window and statements, including that a refused cancellation
+  leaves stock untouched — returning ingredients already in the pan would invent food that no longer
+  exists.
+
+### Notes
+
+Cancellation is permitted while an order is `PENDING`, `NEEDS_APPROVAL` or `APPROVED`, and refused
+once cooking starts. This needed no change to `OrderStatus`: the state machine already encoded
+exactly that window, and both interfaces now ask it rather than restating the rule.
+
+---
+
 ## 2.0.0 — SOLID restructuring, test overhaul, JavaFX interface
 
 A rewrite of the internals, carrying over the domain model and the Gherkin feature files. Behaviour

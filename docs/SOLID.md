@@ -245,8 +245,39 @@ Swapping in database-backed repositories would touch this file and nothing else.
 | **Strategy** | `DietaryRule`, `ChefAssignmentStrategy` | behaviour chosen at runtime, extended by adding classes |
 | **Builder** | `Meal.Builder` | the admin screens collect a recipe field by field; the builder holds the partial state so a `Meal` is never observable half-formed |
 | **Value Object** | `Money`, `Conflict`, `Invoice` | immutable, compared by value, no identity |
-| **Observer** | `Notifier` | low-stock and order events reach whichever interface is running |
+| **Observer** | `Notifier`, `ViewRefresher` | low-stock and order events reach whichever interface is running; GUI tabs are told that shared state changed without knowing about each other |
 | **Composition Root** | `AppContext` | one assembly point for the object graph |
+
+---
+
+## Two later additions worth pointing at
+
+Both came out of testing the finished GUI, and both are cases where the principles above did real
+work rather than decorative work.
+
+**Open/Closed, in the interface layer.** Cancelling an order on the Customer tab has to reach the
+chef's queue, the admin report and the stock table. The obvious fix — give each view a reference to
+the others — couples all three and means every new screen has to be added to the existing ones.
+Instead the views implement [`Refreshable`](../src/main/java/com/cookmgmt/ui/fx/Refreshable.java)
+and register with [`ViewRefresher`](../src/main/java/com/cookmgmt/ui/fx/ViewRefresher.java), which
+fans one notification out to all of them. A fourth tab joins by registering; no existing view is
+edited. Exactly the same shape as `Notifier` in the service layer, applied one layer up.
+
+**Single Responsibility, in deciding what a button may do.** Whether an order can be cancelled is
+stated once, on
+[`OrderStatus.canTransitionTo`](../src/main/java/com/cookmgmt/domain/OrderStatus.java), and the
+interfaces ask it rather than restating it:
+
+```java
+cancelButton.setDisable(order == null
+        || !order.getStatus().canTransitionTo(OrderStatus.CANCELLED));
+```
+
+The console filters its list with the same call. Neither can offer an action the domain would
+refuse, and widening the cancellation window later means editing one `switch` in the enum. Where the
+GUI had written a rule out a second time — `startButton` was enabled for any order that was merely
+"not terminal" — it was already wrong: an order awaiting approval is not terminal, but starting it
+throws. The button offered an action that could only ever fail.
 
 ---
 

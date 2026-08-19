@@ -37,10 +37,23 @@ public class FxApplication extends Application {
         TabPane tabs = new TabPane();
         tabs.setTabClosingPolicy(TabPane.TabClosingPolicy.UNAVAILABLE);
 
+        // The views are held and registered rather than built inline and discarded. Because they
+        // all read the same services, an action on one tab changes what the others should show;
+        // the refresher is what lets a cancellation on the Customer tab reach the chef's queue and
+        // the admin report without any tab knowing the others exist.
+        ViewRefresher refresher = new ViewRefresher();
+        CustomerView customerView = new CustomerView(app, refresher);
+        ChefView chefView = new ChefView(app, refresher);
+        AdminView adminView = new AdminView(app, refresher);
+
         tabs.getTabs().addAll(
-                new Tab("Customer", new CustomerView(app).build()),
-                new Tab("Chef", new ChefView(app).build()),
-                new Tab("Admin", new AdminView(app).build()));
+                new Tab("Customer", customerView.build()),
+                new Tab("Chef", chefView.build()),
+                new Tab("Admin", adminView.build()));
+
+        refresher.register(customerView);
+        refresher.register(chefView);
+        refresher.register(adminView);
 
         BorderPane root = new BorderPane();
         root.setTop(header());
@@ -51,6 +64,9 @@ public class FxApplication extends Application {
                 getClass().getResource("/fx/app.css")).toExternalForm());
 
         stage.setTitle("Special Cook Management System");
+        // Dialogs are separate windows with their own icon lists, so each one applies it too -
+        // see AppIcon.
+        AppIcon.applyTo(stage);
         stage.setScene(scene);
         stage.setMinWidth(900);
         stage.setMinHeight(620);

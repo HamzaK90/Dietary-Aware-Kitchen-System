@@ -110,6 +110,25 @@ ChefView / ChefMenu
   └─ complete → PricingService.quote, price frozen on the order, Invoice returned
 ```
 
+### Cancelling an order
+
+```
+CustomerView / CustomerMenu
+  └─ OrderStatus.canTransitionTo(CANCELLED)   asked before the action is offered at all
+  └─ OrderService.cancel
+       ├─ Order.cancel()                       refuses the transition if cooking has started
+       ├─ OrderRepository.save
+       ├─ InventoryService.release             ingredients return to stock
+       └─ Notifier.notify                      the customer is told
+  └─ ViewRefresher.refreshAll                  every screen re-reads (GUI only)
+```
+
+The permitted window is not restated in either interface: both ask `canTransitionTo`, so neither can
+offer a button the domain would refuse. Ordering matters inside `cancel` — the state transition is
+attempted **before** stock is released, so a refusal cannot return ingredients that are already in
+the pan. Cancelling twice is refused for the same reason, which is what stops a double release from
+inventing stock out of nothing.
+
 ### Order state machine
 
 ```
@@ -147,6 +166,24 @@ prefers it when rendering an invoice, so a later reprice cannot rewrite a bill a
 `OrderRepository.findQueueFor` means one source of truth. The old `Queue<Order>` on `Chef` was
 handed out by reference and consumed by `poll()`, which is how a rejected order became unreachable.
 
+**The GUI tabs are kept in step by a registry, not by each other.** Every tab reads the same
+services, so an action on one changes what the others should show — cancelling an order returns its
+ingredients, empties a slot in the chef's queue and changes a row in the admin report.
+`ViewRefresher` holds the registered `Refreshable` screens and fans a single notification out to
+them. Letting the views call each other would have coupled all three and forced every new screen
+into the existing ones; this way a fourth tab joins by registering, and no existing view is edited.
+
+Two JavaFX details make this work, and neither is optional:
+
+- **`ViewRefresher` needs a re-entrancy guard.** Refreshing a table fires its selection listeners,
+  whose handlers may ask for another refresh. Without the guard one cancellation recurses until the
+  stack overflows.
+- **Replacing a table's items is not enough to redraw a row.** `Entity.equals` compares by UUID, so
+  an order whose *status* changed is still `equals` to the object the cell holds, and JavaFX skips
+  the update as a no-op. Every refresh therefore ends with an explicit `table.refresh()`. This is
+  why approving an order used to leave the Status column reading "Awaiting chef approval" — the data
+  was correct throughout; the cell simply never re-read it.
+
 ## Extension points
 
 | To add… | Do this | Nothing else changes |
@@ -156,3 +193,4 @@ handed out by reference and consumed by `poll()`, which is how a rejected order 
 | persistence | implement `Repository<T>` / `MutableInventory`, wire in `AppContext` | ✓ |
 | a notification channel (email, log) | implement `Notifier` | ✓ |
 | another user interface | build against the services `AppContext` exposes | ✓ |
+| another GUI tab | implement `Refreshable`, register it with `ViewRefresher` | ✓ |
