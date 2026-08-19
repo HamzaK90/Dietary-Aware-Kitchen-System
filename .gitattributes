@@ -1,0 +1,17 @@
+# Normalise line endings so the repository content is identical regardless of
+# the platform a contributor works on. Git stores LF; Windows checkouts get the
+# native endings for files where that matters.
+* text=auto eol=lf
+
+# The Windows wrapper script must keep CRLF or cmd.exe mis-parses it.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# The POSIX wrapper must keep LF.
+mvnw text eol=lf
+
+# Never touch binary content.
+*.jar binary
+*.png binary
+*.jpg binary
+*.pdf binary

@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.cookmgmt</groupId>
+  <artifactId>cook-management-system</artifactId>
+  <version>1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <name>Special Cook Management System</name>
+  <description>
+    In-memory kitchen management system (customers, chefs, meals, inventory, dietary
+    substitutions, invoicing) built as a SOLID / TDD / BDD teaching project.
+  </description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.release>17</maven.compiler.release>
+
+    <junit.version>5.10.2</junit.version>
+    <junit.platform.version>1.10.2</junit.platform.version>
+    <cucumber.version>7.15.0</cucumber.version>
+    <javafx.version>21.0.4</javafx.version>
+
+    <console.main.class>com.cookmgmt.ui.console.ConsoleApp</console.main.class>
+    <fx.main.class>com.cookmgmt.ui.fx.FxApplication</fx.main.class>
+    <launcher.main.class>com.cookmgmt.ui.fx.AppLauncher</launcher.main.class>
+  </properties>
+
+  <dependencies>
+    <!-- ==================== Runtime: JavaFX GUI ==================== -->
+    <!--
+      javafx-controls transitively brings javafx-base and javafx-graphics.
+      The OpenJFX POMs resolve the OS-specific classifier automatically.
+      Charts use javafx.scene.chart (built in) - no third-party charting library needed.
+    -->
+    <dependency>
+      <groupId>org.openjfx</groupId>
+      <artifactId>javafx-controls</artifactId>
+      <version>${javafx.version}</version>
+    </dependency>
+
+    <!-- ==================== Test: JUnit 5 ==================== -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- Runs the @Suite class that hosts the Cucumber engine -->
+    <dependency>
+      <groupId>org.junit.platform</groupId>
+      <artifactId>junit-platform-suite</artifactId>
+      <version>${junit.platform.version}</version>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- ==================== Test: Cucumber (BDD) ==================== -->
+    <dependency>
+      <groupId>io.cucumber</groupId>
+      <artifactId>cucumber-java</artifactId>
+      <version>${cucumber.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!--
+      cucumber-junit-platform-engine replaces the old JUnit 4 cucumber-junit runner,
+      so the runner and the assertions finally live on the same JUnit generation.
+    -->
+    <dependency>
+      <groupId>io.cucumber</groupId>
+      <artifactId>cucumber-junit-platform-engine</artifactId>
+      <version>${cucumber.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <!-- Dependency injection so step classes share one wired TestContext -->
+    <dependency>
+      <groupId>io.cucumber</groupId>
+      <artifactId>cucumber-picocontainer</artifactId>
+      <version>${cucumber.version}</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
+
+      <!--
+        Matches the Cucumber suite (RunCucumberTest) and every unit test (*Test).
+      -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+        <configuration>
+          <includes>
+            <include>**/*Test.java</include>
+            <include>**/*Tests.java</include>
+          </includes>
+          <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+        </configuration>
+      </plugin>
+
+      <!-- Code coverage: report on every build, enforce a floor at verify -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>0.8.12</version>
+        <executions>
+          <execution>
+            <id>prepare-agent</id>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>check-coverage</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <rule>
+                  <element>BUNDLE</element>
+                  <limits>
+                    <limit>
+                      <!-- Actual coverage is ~85%; the floor is set just below it so a
+                           regression fails the build rather than passing unnoticed. -->
+                      <counter>LINE</counter>
+                      <value>COVEREDRATIO</value>
+                      <minimum>0.80</minimum>
+                    </limit>
+                  </limits>
+                </rule>
+              </rules>
+              <!-- The UI layers are exercised by hand, not by unit tests -->
+              <excludes>
+                <exclude>com/cookmgmt/ui/**</exclude>
+                <exclude>com/cookmgmt/app/SampleData.*</exclude>
+              </excludes>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- ./mvnw javafx:run  -> launches the GUI -->
+      <plugin>
+        <groupId>org.openjfx</groupId>
+        <artifactId>javafx-maven-plugin</artifactId>
+        <version>0.0.8</version>
+        <configuration>
+          <mainClass>${fx.main.class}</mainClass>
+        </configuration>
+      </plugin>
+
+      <!-- ./mvnw exec:java -> launches the console UI -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.2.0</version>
+        <configuration>
+          <mainClass>${console.main.class}</mainClass>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration>
+          <archive>
+            <manifest>
+              <mainClass>${launcher.main.class}</mainClass>
+            </manifest>
+          </archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>
