@@ -140,15 +140,15 @@ More screens — inventory, chefs, customers, menu, and the cancellation before/
                            ▼
    ┌──────────────────────────────────────────────────────┐
    │  service                                             │
-   │  OrderService · KitchenService · PricingService       │
-   │  InventoryService · SubstitutionService               │
-   │  CatalogService · CustomerService · StaffService      │
+   │  OrderService · KitchenService · PricingService      │
+   │  InventoryService · SubstitutionService              │
+   │  CatalogService · CustomerService · StaffService     │
    └───────┬──────────────────────────────┬───────────────┘
            ▼                              ▼
    ┌───────────────┐            ┌──────────────────────────┐
    │  repository   │            │  domain                  │
-   │  (interfaces) │            │  Meal · Order · Customer  │
-   │  in-memory    │            │  Money · rule.* · policy.*│
+   │  (interfaces) │            │ Meal · Order · Customer  │
+   │  in-memory    │            │ Money · rule.* · policy.*│
    └───────────────┘            └──────────────────────────┘
 ```
 
