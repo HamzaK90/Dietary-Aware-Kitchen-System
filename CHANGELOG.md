@@ -32,6 +32,10 @@ the right data throughout, which is why the existing tests did not catch any of 
   `OrderStatus.canTransitionTo`, as the cancel button does.
 - **The customer's orders table was empty until the customer was switched.** The picker selects its
   first entry before its listener is attached, so nothing populated the table at startup.
+- **The JaCoCo report and the coverage gate measured different code.** Only the `check` execution
+  excluded `com.cookmgmt.ui.**`, so the gate passed at 88% while the report the README points a
+  reader to read 34% — it counted a JavaFX layer that is verified by hand. Both executions now share
+  the exclusions, and the documented figures were corrected to match (README, `docs/TESTING.md`).
 
 ### Added
 
@@ -50,7 +54,7 @@ the right data throughout, which is why the existing tests did not catch any of 
   and show `-` rather than an estimate they will never be charged.
 - **An application icon**, applied to the main window and to every dialog; a JavaFX dialog is its
   own window with its own icon list.
-- 19 tests covering the cancellation window and statements, including that a refused cancellation
+- 17 tests covering the cancellation window and statements, including that a refused cancellation
   leaves stock untouched — returning ingredients already in the pan would invent food that no longer
   exists.
 

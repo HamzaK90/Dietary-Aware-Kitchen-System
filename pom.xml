@@ -125,6 +125,17 @@
             <goals>
               <goal>report</goal>
             </goals>
+            <configuration>
+              <!-- The same exclusions as the gate below, so the published report and the
+                   enforced threshold describe the same code. Without this the report read 34%,
+                   because it counted a JavaFX layer that is verified by hand, while the gate
+                   passed at 88% - and every coverage figure in the documentation looked like a
+                   lie to anyone who opened target/site/jacoco/index.html. -->
+              <excludes>
+                <exclude>com/cookmgmt/ui/**</exclude>
+                <exclude>com/cookmgmt/app/SampleData.*</exclude>
+              </excludes>
+            </configuration>
           </execution>
           <execution>
             <id>check-coverage</id>

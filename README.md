@@ -20,7 +20,7 @@ memory and resets when the application stops.
 
 ```
 Java 17+  ·  Maven (wrapper included)  ·  JUnit 5  ·  Cucumber 7  ·  JavaFX 21
-217 tests  ·  45 BDD scenarios  ·  ~85% line coverage
+234 tests  ·  48 BDD scenarios  ·  88% line coverage
 ```
 
 ---
@@ -190,10 +190,10 @@ Reports land in `target/site/jacoco/index.html` (coverage) and `target/cucumber/
 
 | | Count |
 |---|---|
-| Cucumber scenarios | 45 (174 steps) |
-| Unit tests | 172 |
-| **Total** | **217** |
-| Line coverage | ~85% (build fails below 80%) |
+| Cucumber scenarios | 48 (192 steps) |
+| Unit tests | 186 |
+| **Total** | **234** |
+| Line coverage | 88% (build fails below 80%; excludes `ui.**`, verified by hand) |
 
 More in [docs/TESTING.md](docs/TESTING.md).
 
