@@ -58,6 +58,50 @@ three tabs are kept in step by [`ViewRefresher`](src/main/java/com/cookmgmt/ui/f
 
 ---
 
+## Screenshots
+
+<table>
+<tr>
+<td width="33%" align="center" valign="top">
+<a href="docs/screenshots/customer-conflicts.png"><img src="docs/screenshots/customer-conflicts.png" width="260" alt="Customer tab listing vegan conflicts on the Beef Burger with proposed substitutions"></a><br>
+<b>Conflicts and substitution</b><br>
+<sub>Every clash listed with its own reason, and replacements that are both in stock and actually vegan.</sub>
+</td>
+<td width="33%" align="center" valign="top">
+<a href="docs/screenshots/chef-approval.png"><img src="docs/screenshots/chef-approval.png" width="260" alt="Chef work queue with an order awaiting approval"></a><br>
+<b>Chef approval</b><br>
+<sub>Substitutions need sign-off. <i>Start cooking</i> is greyed because that transition is illegal from this state.</sub>
+</td>
+<td width="33%" align="center" valign="top">
+<a href="docs/screenshots/invoice.png"><img src="docs/screenshots/invoice.png" width="260" alt="Itemised invoice dialog for a completed order"></a><br>
+<b>Itemised invoice</b><br>
+<sub>Line items that sum exactly to the total; <code>*</code> marks a substituted ingredient.</sub>
+</td>
+</tr>
+<tr>
+<td width="33%" align="center" valign="top">
+<a href="docs/screenshots/order-cancelled.png"><img src="docs/screenshots/order-cancelled.png" width="260" alt="Customer orders table showing a cancelled order with no total"></a><br>
+<b>Cancelled order</b><br>
+<sub>No total, and the bill button is disabled — nothing was cooked, so nothing is charged.</sub>
+</td>
+<td width="33%" align="center" valign="top">
+<a href="docs/screenshots/admin-orders.png"><img src="docs/screenshots/admin-orders.png" width="260" alt="Admin orders report with status colouring and an orders-per-meal chart"></a><br>
+<b>Admin report</b><br>
+<sub>Cancelled struck through, completed green. The chart counts only orders the kitchen will serve.</sub>
+</td>
+<td width="33%" align="center" valign="top">
+<a href="docs/screenshots/statement.png"><img src="docs/screenshots/statement.png" width="260" alt="Customer statement dialog totalling completed orders"></a><br>
+<b>Statement</b><br>
+<sub>Completed orders totalled; cancelled ones reported as excluded rather than quietly dropped.</sub>
+</td>
+</tr>
+</table>
+
+More screens — inventory, chefs, customers, menu, and the cancellation before/after — in
+[docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
+
+---
+
 ## What it does
 
 - **Dietary profiles** — customers record preferences (vegan, vegetarian, halal, kosher,
@@ -199,4 +243,5 @@ src/test/
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | layers, dependency rules, patterns, key flows |
 | [docs/SOLID.md](docs/SOLID.md) | each principle with the before/after code |
 | [docs/TESTING.md](docs/TESTING.md) | how to run tests, feature→step map, TDD workflow |
+| [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) | every screen of the interface, with what to look at |
 | [CHANGELOG.md](CHANGELOG.md) | what changed in this overhaul |
