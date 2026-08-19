@@ -6,6 +6,7 @@ import com.cookmgmt.domain.Customer;
 import com.cookmgmt.domain.Meal;
 import com.cookmgmt.domain.Money;
 import com.cookmgmt.domain.Order;
+import com.cookmgmt.domain.OrderStatus;
 import com.cookmgmt.domain.policy.ChefAssignmentStrategy;
 import com.cookmgmt.domain.policy.LeastLoadedAssignment;
 import com.cookmgmt.domain.policy.RoundRobinAssignment;
@@ -44,20 +45,26 @@ import java.util.Map;
  * charting library for one bar chart would have reintroduced exactly the kind of unused dependency
  * this project was cleaned of.
  */
-public class AdminView {
+public class AdminView implements Refreshable {
 
     private final AppContext app;
+    private final ViewRefresher refresher;
 
     private final TableView<Meal> mealsTable = new TableView<>();
     private final TableView<Chef> chefsTable = new TableView<>();
     private final TableView<Customer> customersTable = new TableView<>();
     private final TableView<Map.Entry<String, Integer>> stockTable = new TableView<>();
     private final TableView<Order> ordersTable = new TableView<>();
+    // Held as fields so refreshChart can reset the category list and pin the numeric range; a
+    // CategoryAxis otherwise keeps every category it has ever been given.
+    private final CategoryAxis categoryAxis = new CategoryAxis();
+    private final NumberAxis countAxis = new NumberAxis();
     private final BarChart<String, Number> ordersChart = buildChart();
     private final ComboBox<String> policyPicker = new ComboBox<>();
 
-    public AdminView(AppContext app) {
+    public AdminView(AppContext app, ViewRefresher refresher) {
         this.app = app;
+        this.refresher = refresher;
     }
 
     public Region build() {
@@ -89,7 +96,7 @@ public class AdminView {
         });
 
         Button refresh = new Button("Refresh all");
-        refresh.setOnAction(event -> refreshAll());
+        refresh.setOnAction(event -> refresher.refreshAll());
 
         HBox bar = new HBox(10, new Label("Chef assignment policy:"), policyPicker, refresh);
         bar.setPadding(new Insets(12, 12, 0, 12));
@@ -142,7 +149,7 @@ public class AdminView {
                 mealName.clear();
                 recipeField.clear();
                 minutes.clear();
-                refreshAll();
+                refresher.refreshAll();
             } catch (NumberFormatException e) {
                 FxDialogs.warn("Cooking time needed", "Enter the cooking time as a whole number.");
             } catch (RuntimeException e) {
@@ -156,7 +163,7 @@ public class AdminView {
             if (selected != null && FxDialogs.confirm("Delete meal",
                     "Remove \"" + selected.getName() + "\" from the menu?")) {
                 app.catalogService().removeMeal(selected);
-                refreshAll();
+                refresher.refreshAll();
             }
         });
 
@@ -208,7 +215,7 @@ public class AdminView {
                 app.staffService().hire(chefName.getText(), chefEmail.getText());
                 chefName.clear();
                 chefEmail.clear();
-                refreshAll();
+                refresher.refreshAll();
             } catch (RuntimeException e) {
                 // Duplicate emails are refused by the repository rather than silently accepted.
                 FxDialogs.error("Could not add the chef", e.getMessage());
@@ -221,7 +228,7 @@ public class AdminView {
             if (selected != null && FxDialogs.confirm("Remove chef",
                     "Remove " + selected.getName() + " from the roster?")) {
                 app.staffService().remove(selected);
-                refreshAll();
+                refresher.refreshAll();
             }
         });
 
@@ -271,7 +278,7 @@ public class AdminView {
                 customerEmail.clear();
                 diets.clear();
                 allergyField.clear();
-                refreshAll();
+                refresher.refreshAll();
             } catch (RuntimeException e) {
                 FxDialogs.error("Could not register the customer", e.getMessage());
             }
@@ -324,7 +331,7 @@ public class AdminView {
                 ingredientName.clear();
                 quantityField.clear();
                 priceField.clear();
-                refreshAll();
+                refresher.refreshAll();
             } catch (NumberFormatException e) {
                 FxDialogs.warn("Check the numbers",
                         "Quantity must be a whole number and price a decimal, e.g. 3.50");
@@ -358,13 +365,11 @@ public class AdminView {
         status.setPrefWidth(150);
 
         TableColumn<Order, String> total = new TableColumn<>("Total");
-        total.setCellValueFactory(cell -> FxBindings.of(
-                cell.getValue().getFinalPrice()
-                        .map(Object::toString)
-                        .orElseGet(() -> app.pricingService().quote(cell.getValue()) + " est.")));
+        total.setCellValueFactory(cell -> FxBindings.of(totalTextFor(cell.getValue())));
         total.setPrefWidth(100);
 
         ordersTable.getColumns().setAll(List.of(number, customer, meal, status, total));
+        ordersTable.setRowFactory(table -> new OrderStatusRow());
 
         VBox pane = new VBox(8, sectionLabel("All orders"), ordersTable,
                 sectionLabel("Orders per meal"), ordersChart);
@@ -373,14 +378,63 @@ public class AdminView {
         return pane;
     }
 
-    private static BarChart<String, Number> buildChart() {
-        CategoryAxis xAxis = new CategoryAxis();
-        xAxis.setLabel("Meal");
-        NumberAxis yAxis = new NumberAxis();
-        yAxis.setLabel("Orders");
-        yAxis.setTickUnit(1);
+    /**
+     * An order that will never be cooked has no total.
+     *
+     * <p>Quoting a running estimate for a cancelled or rejected order is the same mistake as
+     * invoicing one: it presents a number the kitchen will never charge as though it were real.
+     */
+    private String totalTextFor(Order order) {
+        if (order.getFinalPrice().isPresent()) {
+            return order.getFinalPrice().get().toString();
+        }
+        return order.getStatus().isActive()
+                ? app.pricingService().quote(order) + " est."
+                : "-";
+    }
 
-        BarChart<String, Number> chart = new BarChart<>(xAxis, yAxis);
+    /**
+     * Colours an order row by its status, so a cancellation is visible at a glance rather than
+     * only readable in the status column.
+     *
+     * <p>The style classes are removed before each is reapplied: {@link javafx.scene.control.TableRow}
+     * instances are recycled as the table scrolls, so a row that keeps a class from whichever order
+     * it displayed previously will smear that colour across unrelated rows.
+     */
+    private static final class OrderStatusRow extends javafx.scene.control.TableRow<Order> {
+
+        private static final List<String> STATUS_CLASSES =
+                List.of("order-cancelled", "order-rejected", "order-completed");
+
+        @Override
+        protected void updateItem(Order order, boolean empty) {
+            super.updateItem(order, empty);
+            getStyleClass().removeAll(STATUS_CLASSES);
+            if (empty || order == null) {
+                return;
+            }
+            switch (order.getStatus()) {
+                case CANCELLED -> getStyleClass().add("order-cancelled");
+                case REJECTED -> getStyleClass().add("order-rejected");
+                case COMPLETED -> getStyleClass().add("order-completed");
+                default -> { }
+            }
+        }
+    }
+
+    private BarChart<String, Number> buildChart() {
+        categoryAxis.setLabel("Meal");
+        // setAnimated on the chart does not reach its axes, and an animating axis re-ranges itself
+        // asynchronously - which is what made the scale appear to creep on every refresh.
+        categoryAxis.setAnimated(false);
+
+        countAxis.setLabel("Orders");
+        countAxis.setTickUnit(1);
+        countAxis.setMinorTickCount(0);
+        countAxis.setAutoRanging(false);
+        countAxis.setAnimated(false);
+
+        BarChart<String, Number> chart = new BarChart<>(categoryAxis, countAxis);
         chart.setLegendVisible(false);
         chart.setAnimated(false);
         chart.setPrefHeight(240);
@@ -389,6 +443,7 @@ public class AdminView {
 
     // ----------------------------------------------------------------- state
 
+    @Override
     public void refreshAll() {
         mealsTable.setItems(FXCollections.observableArrayList(app.catalogService().allMeals()));
         chefsTable.setItems(FXCollections.observableArrayList(app.staffService().allChefs()));
@@ -399,19 +454,60 @@ public class AdminView {
                         .sorted(Map.Entry.comparingByKey())
                         .toList()));
         ordersTable.setItems(FXCollections.observableArrayList(app.orderRepository().findAll()));
+
+        /*
+         * Replacing the items list is not enough to redraw a row.
+         *
+         * Entity.equals compares by identity, so an order whose status has just changed is still
+         * equal to the object the cell already holds, and JavaFX treats the update as a no-op and
+         * skips it. The Status column therefore kept showing "Awaiting chef approval" after a chef
+         * had approved the order - the data was right, the cell simply never re-read it. The chefs
+         * table has the same problem with its live "In queue" count.
+         */
+        mealsTable.refresh();
+        chefsTable.refresh();
+        customersTable.refresh();
+        stockTable.refresh();
+        ordersTable.refresh();
+
         refreshChart();
     }
 
     private void refreshChart() {
         Map<String, Integer> counts = new LinkedHashMap<>();
         for (Order order : app.orderRepository().findAll()) {
+            // Cancelled and rejected orders are excluded: the chart is meant to show what the
+            // kitchen is actually serving, and counting withdrawn orders inflates demand for
+            // exactly the meals customers turned out not to want.
+            if (order.getStatus() == OrderStatus.CANCELLED
+                    || order.getStatus() == OrderStatus.REJECTED) {
+                continue;
+            }
             counts.merge(order.getMeal().getName(), 1, Integer::sum);
         }
 
+        /*
+         * The categories are cleared and restated on every refresh.
+         *
+         * A CategoryAxis accumulates the categories it has been shown. Replacing the series without
+         * resetting it left the old names in place, so each "Refresh all" widened the axis by
+         * another set of empty slots and the bars shrank towards nothing even though the order
+         * count had not moved.
+         */
+        ordersChart.getData().clear();
+        categoryAxis.getCategories().clear();
+        categoryAxis.setCategories(FXCollections.observableArrayList(counts.keySet()));
+
+        // Auto-ranging picks its own bounds and animates towards them, which made the vertical
+        // scale drift on every refresh. Whole orders are counted, so the range is stated exactly.
+        int highest = counts.values().stream().max(Integer::compareTo).orElse(0);
+        countAxis.setLowerBound(0);
+        countAxis.setUpperBound(Math.max(1, highest));
+        countAxis.setTickUnit(1);
+
         XYChart.Series<String, Number> series = new XYChart.Series<>();
         counts.forEach((meal, count) -> series.getData().add(new XYChart.Data<>(meal, count)));
-
-        ordersChart.getData().setAll(List.of(series));
+        ordersChart.getData().add(series);
     }
 
     private static Region pane(Region table, Region controls) {

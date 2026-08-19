@@ -4,6 +4,7 @@ import com.cookmgmt.app.AppContext;
 import com.cookmgmt.domain.Chef;
 import com.cookmgmt.domain.Invoice;
 import com.cookmgmt.domain.Order;
+import com.cookmgmt.domain.OrderStatus;
 import com.cookmgmt.inventory.ReadableInventory;
 import javafx.collections.FXCollections;
 import javafx.geometry.Insets;
@@ -30,9 +31,10 @@ import java.util.List;
  * console, this screen and the tests - and the {@code setTestAutoApprove} flag that existed purely
  * to bypass that prompt is gone.
  */
-public class ChefView {
+public class ChefView implements Refreshable {
 
     private final AppContext app;
+    private final ViewRefresher refresher;
 
     private final ComboBox<Chef> chefPicker = new ComboBox<>();
     private final TableView<Order> queueTable = new TableView<>();
@@ -45,8 +47,9 @@ public class ChefView {
     private final Button startButton = new Button("Start cooking");
     private final Button completeButton = new Button("Complete order");
 
-    public ChefView(AppContext app) {
+    public ChefView(AppContext app, ViewRefresher refresher) {
         this.app = app;
+        this.refresher = refresher;
     }
 
     public Region build() {
@@ -76,6 +79,10 @@ public class ChefView {
 
         VBox root = new VBox(8, chefBar(), body);
         VBox.setVgrow(body, Priority.ALWAYS);
+
+        // Populates the queue, the low-stock list and the button states in one place, so none of
+        // them depends on a build step happening to call it.
+        refreshAll();
         return root;
     }
 
@@ -92,7 +99,7 @@ public class ChefView {
         chefPicker.setItems(FXCollections.observableArrayList(app.staffService().allChefs()));
         chefPicker.setConverter(new SimpleConverter<>(Chef::getName));
         chefPicker.getSelectionModel().selectFirst();
-        chefPicker.valueProperty().addListener((obs, old, selected) -> refreshQueue());
+        chefPicker.valueProperty().addListener((obs, old, selected) -> refreshAll());
     }
 
     private void buildQueueTable() {
@@ -121,30 +128,42 @@ public class ChefView {
     }
 
     private void buildButtons() {
+        // Every one of these changes stock, the customer's order list, or the admin report, so
+        // they refresh the whole application rather than only this tab.
         approveButton.getStyleClass().add("primary-button");
         approveButton.setOnAction(event -> withSelectedOrder(order -> {
             app.kitchenService().approve(order);
-            refreshAll();
+            refresher.refreshAll();
         }));
 
         rejectButton.setOnAction(event -> withSelectedOrder(order -> {
             if (FxDialogs.confirm("Reject order #" + order.getOrderNumber(),
                     "The order will end and its ingredients will be returned to stock.")) {
                 app.kitchenService().reject(order);
-                refreshAll();
+                refresher.refreshAll();
             }
         }));
 
         startButton.setOnAction(event -> withSelectedOrder(order -> {
             app.kitchenService().startCooking(order);
-            refreshAll();
+            refresher.refreshAll();
         }));
 
         completeButton.setOnAction(event -> withSelectedOrder(order -> {
             Invoice invoice = app.kitchenService().complete(order);
             FxDialogs.text("Order #" + order.getOrderNumber() + " completed", invoice.format());
-            refreshAll();
+            refresher.refreshAll();
         }));
+    }
+
+    /**
+     * Mirrors {@link com.cookmgmt.service.KitchenService#complete}, which walks an order that has
+     * not been started through {@code IN_PROGRESS} on the caller's behalf. An order still awaiting
+     * approval cannot get there, so it cannot be completed either.
+     */
+    private static boolean canComplete(Order order) {
+        return order.getStatus() == OrderStatus.IN_PROGRESS
+                || order.getStatus().canTransitionTo(OrderStatus.IN_PROGRESS);
     }
 
     private void withSelectedOrder(java.util.function.Consumer<Order> action) {
@@ -164,6 +183,7 @@ public class ChefView {
 
     // ------------------------------------------------------------------ state
 
+    @Override
     public void refreshAll() {
         refreshQueue();
         refreshLowStock();
@@ -173,21 +193,37 @@ public class ChefView {
     private void refreshQueue() {
         Chef chef = chefPicker.getValue();
         List<Order> queue = chef == null ? List.of() : app.kitchenService().queueFor(chef);
+        // Re-selecting by order number keeps the chef's place in the queue after a refresh, which
+        // now happens whenever any tab changes something.
+        Order previous = queueTable.getSelectionModel().getSelectedItem();
         queueTable.setItems(FXCollections.observableArrayList(queue));
+        if (previous != null) {
+            queue.stream()
+                    .filter(order -> order.getOrderNumber() == previous.getOrderNumber())
+                    .findFirst()
+                    .ifPresent(order -> queueTable.getSelectionModel().select(order));
+        }
+
+        // See CustomerView.refreshOrders: identity-based equality means JavaFX treats an order
+        // whose status changed as unchanged, so the cells must be told to re-read explicitly.
+        queueTable.refresh();
+
         queueSummary.setText(queue.size() + " order(s) waiting; "
                 + app.kitchenService().awaitingApproval().size()
                 + " awaiting approval across the kitchen.");
-        refreshLowStock();
     }
 
     private void refreshDetail() {
         Order order = queueTable.getSelectionModel().getSelectedItem();
         boolean none = order == null;
 
+        // Asked of the state machine rather than restated here. "Not terminal" was too loose: an
+        // order still awaiting approval is not terminal, but starting it is an illegal transition,
+        // so the button offered an action that could only ever throw.
         approveButton.setDisable(none || !order.requiresApproval());
         rejectButton.setDisable(none || !order.requiresApproval());
-        startButton.setDisable(none || order.getStatus().isTerminal());
-        completeButton.setDisable(none || order.getStatus().isTerminal());
+        startButton.setDisable(none || !order.getStatus().canTransitionTo(OrderStatus.IN_PROGRESS));
+        completeButton.setDisable(none || !canComplete(order));
 
         if (none) {
             orderDetail.clear();
