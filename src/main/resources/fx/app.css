@@ -1,0 +1,85 @@
+/*
+ * Styling for the JavaFX interface.
+ *
+ * Kept in one stylesheet rather than scattered through setStyle() calls, so the look can change
+ * without touching a controller - the same separation the rest of the refactoring is about.
+ */
+
+.root {
+    -fx-font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    -fx-font-size: 13px;
+    -fx-background-color: #f6f7f9;
+}
+
+.app-header {
+    -fx-background-color: #2f3e4e;
+    -fx-padding: 14 18 14 18;
+    -fx-spacing: 4;
+}
+
+.app-title {
+    -fx-text-fill: white;
+    -fx-font-size: 19px;
+    -fx-font-weight: bold;
+}
+
+.app-subtitle {
+    -fx-text-fill: #c3cdd8;
+    -fx-font-size: 12px;
+}
+
+.section-label {
+    -fx-font-weight: bold;
+    -fx-text-fill: #35485c;
+    -fx-padding: 4 0 0 0;
+}
+
+.profile-label {
+    -fx-text-fill: #5a6b7c;
+    -fx-font-size: 12px;
+}
+
+.detail-pane {
+    -fx-font-family: "Consolas", "Menlo", monospace;
+    -fx-font-size: 12px;
+    -fx-control-inner-background: #ffffff;
+}
+
+.primary-button {
+    -fx-background-color: #2f6f4f;
+    -fx-text-fill: white;
+    -fx-font-weight: bold;
+}
+
+.primary-button:hover {
+    -fx-background-color: #38855f;
+}
+
+.primary-button:disabled {
+    -fx-background-color: #9fb3a8;
+}
+
+.table-view {
+    -fx-background-color: white;
+}
+
+.table-view .column-header-background {
+    -fx-background-color: #e6eaef;
+}
+
+.table-view .column-header .label {
+    -fx-font-weight: bold;
+    -fx-text-fill: #35485c;
+}
+
+.tab-pane .tab {
+    -fx-padding: 6 16 6 16;
+}
+
+.chart-plot-background {
+    -fx-background-color: #ffffff;
+}
+
+.default-color0.chart-bar {
+    -fx-bar-fill: #4a7fb5;
+}
